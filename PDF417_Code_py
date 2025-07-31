@@ -1,0 +1,473 @@
+#!/usr/bin/env python3
+"""
+Madagascar Driver's License Barcode Offline Decoder
+====================================================
+
+🔓 THIRD-PARTY DECODER for Madagascar License Barcodes
+
+This standalone module allows authorized third parties to decode Madagascar driver's 
+license barcodes without requiring a connection to the main license system.
+
+🔐 SECURITY FEATURES:
+- Static key XOR encryption (length-preserving)
+- zlib compression for size optimization
+- Standardized 9-field pipe-delimited format
+- Embedded photo support (60x90 pixels, grayscale JPEG)
+
+📋 DECODED INFORMATION:
+1. Person Name (Initials and Surname)
+2. National ID Number (12 digits)
+3. Date of Birth (YYYY-MM-DD)
+4. License Number (13 digits)
+5. Valid Date Range (From - To)
+6. License Category Codes
+7. Vehicle Restrictions
+8. Driver Restrictions  
+9. Gender (M/F)
+
+Requirements:
+- Python 3.7+
+- pillow>=10.0.0 (optional, for image extraction)
+
+Usage:
+    python offline_barcode_decoder.py --data <hex_barcode_data>
+    python offline_barcode_decoder.py --file <barcode_data_file>
+    python offline_barcode_decoder.py --interactive
+
+Example:
+    python offline_barcode_decoder.py --data "78da016f0390fc424a20534348555454457c343536373430323239363234..."
+
+⚠️  IMPORTANT: The encryption key in this file MUST match the key used by your
+    barcode generation system. Update the STATIC_ENCRYPTION_KEY if needed.
+"""
+
+import base64
+import binascii
+import json
+import argparse
+import sys
+from datetime import datetime
+from typing import Dict, Any, Optional, Union
+from pathlib import Path
+
+# Optional imports
+try:
+    from PIL import Image
+    import io
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+    print("WARNING: PIL not available - image extraction will be limited")
+
+import zlib
+
+
+class MadagascarLicenseDecoder:
+    """Offline decoder for Madagascar driver's license barcodes"""
+    
+    # Static encryption key - MUST match the key used in your barcode generation system
+    # This key is required for third parties to decrypt and read the barcodes
+    # Key: 93E98969AD11D2C8162DD95DB3F69 (31 characters)
+    STATIC_ENCRYPTION_KEY = "93E98969AD11D2C8162DD95DB3F69"
+    
+    def __init__(self):
+        """Initialize the decoder"""
+        pass
+    
+    def decode_barcode_data(self, scanned_data: str) -> Dict[str, Any]:
+        """
+        Decode scanned barcode data to extract license information
+        
+        Args:
+            scanned_data: Hex string data from barcode scan
+            
+        Returns:
+            Dictionary containing decoded license information
+        """
+        try:
+            print("=== MADAGASCAR LICENSE BARCODE DECODER ===")
+            
+            # Step 1: Convert hex string to binary
+            binary_data = self._hex_to_binary(scanned_data)
+            print(f"Step 1 - Hex decode: {len(scanned_data)} chars → {len(binary_data)} bytes")
+            
+            # Step 2: Decrypt with static key XOR
+            decrypted_data = self._static_decrypt(binary_data)
+            print(f"Step 2 - Decrypt: {len(binary_data)} → {len(decrypted_data)} bytes")
+            
+            # Step 3: Decompress with zlib
+            decompressed_data = self._decompress_data(decrypted_data)
+            print(f"Step 3 - Decompress: {len(decrypted_data)} → {len(decompressed_data)} bytes")
+            
+            # Step 4: Parse pipe-delimited format
+            result = self._parse_madagascar_format(decompressed_data)
+            print("Step 4 - Parse: License data extracted successfully")
+            
+            return result
+        
+        except Exception as e:
+            raise Exception(f"Failed to decode barcode data: {str(e)}")
+    
+    def _hex_to_binary(self, hex_data: str) -> bytes:
+        """Convert hex string to binary data"""
+        # Remove any whitespace and validate
+        hex_data = hex_data.strip().replace(' ', '')
+        
+        if len(hex_data) % 2 != 0:
+            raise ValueError("Invalid hex string: odd number of characters")
+        
+        try:
+            return binascii.unhexlify(hex_data)
+        except Exception as e:
+            raise ValueError(f"Invalid hex string: {str(e)}")
+    
+    def _static_decrypt(self, data: bytes) -> bytes:
+        """
+        Decrypt data using static key XOR (length preserving)
+        
+        Args:
+            data: Encrypted data bytes
+            
+        Returns:
+            Decrypted data bytes (same length as input)
+        """
+        key_bytes = self.STATIC_ENCRYPTION_KEY.encode('utf-8')
+        decrypted = bytearray()
+        
+        for i, byte in enumerate(data):
+            # XOR with rotating key
+            key_byte = key_bytes[i % len(key_bytes)]
+            decrypted.append(byte ^ key_byte)
+        
+        return bytes(decrypted)
+    
+    def _decompress_data(self, data: bytes) -> bytes:
+        """Decompress data using zlib"""
+        try:
+            return zlib.decompress(data)
+        except Exception as e:
+            raise Exception(f"Failed to decompress data: {str(e)}")
+    
+    def _parse_madagascar_format(self, decompressed_data: bytes) -> Dict[str, Any]:
+        """
+        Parse Madagascar pipe-delimited license format
+        
+        Format: Name|ID|DOB|LicenseNum|ValidFrom-ValidTo|Codes|VehicleRestr|DriverRestr|Sex
+        Optional: ||IMG|| separator followed by image data
+        """
+        try:
+            # Check for image separator
+            image_separator = b"||IMG||"
+            has_image = image_separator in decompressed_data
+            
+            if has_image:
+                # Split license data and image
+                parts = decompressed_data.split(image_separator, 1)
+                license_data_bytes = parts[0]
+                image_bytes = parts[1] if len(parts) > 1 else b""
+                print(f"Found embedded image: {len(image_bytes)} bytes")
+            else:
+                license_data_bytes = decompressed_data
+                image_bytes = b""
+                print("No embedded image found")
+            
+            # Parse license data string
+            license_data_str = license_data_bytes.decode('utf-8')
+            print(f"License data string: {license_data_str}")
+            
+            # Split by pipes: Name|ID|DOB|LicenseNum|ValidFrom-ValidTo|Codes|VehicleRestr|DriverRestr|Sex
+            fields = license_data_str.split('|')
+            
+            if len(fields) != 9:
+                raise ValueError(f"Expected 9 fields in license data, got {len(fields)}")
+            
+            # Parse valid date range
+            valid_dates = fields[4].split('-') if fields[4] else ['', '']
+            valid_from = valid_dates[0] if len(valid_dates) > 0 else ''
+            valid_to = valid_dates[1] if len(valid_dates) > 1 else ''
+            
+            # Build license data dictionary
+            license_data = {
+                "person_name": fields[0],
+                "id_number": fields[1], 
+                "date_of_birth": self._format_date(fields[2]),
+                "license_number": fields[3],
+                "valid_from": self._format_date(valid_from),
+                "valid_to": self._format_date(valid_to),
+                "license_codes": fields[5].split(',') if fields[5] else [],
+                "vehicle_restrictions": fields[6].split(',') if fields[6] else [],
+                "driver_restrictions": fields[7].split(',') if fields[7] else [],
+                "sex": fields[8],
+                "country": "MG",
+                "format_version": "standardized_madagascar_v5"
+            }
+            
+            # Build result dictionary
+            result = {
+                "success": True,
+                "license_data": license_data,
+                "has_image": has_image,
+                "image_size_bytes": len(image_bytes),
+                "total_payload_size": len(decompressed_data),
+                "decoding_format": "pipe_delimited_xor_encrypted",
+                "message": f"Madagascar license decoded successfully: {license_data['license_number']}"
+            }
+            
+            # Add image data if present
+            if has_image and image_bytes:
+                result["image_base64"] = base64.b64encode(image_bytes).decode('utf-8')
+                
+                # Try to determine image format
+                if image_bytes.startswith(b'\xff\xd8\xff'):
+                    result["image_format"] = "JPEG"
+                elif image_bytes.startswith(b'\x89PNG'):
+                    result["image_format"] = "PNG"
+                else:
+                    result["image_format"] = "Unknown"
+            
+            return result
+            
+        except Exception as e:
+            raise Exception(f"Failed to parse license data: {str(e)}")
+    
+    def _format_date(self, date_str: str) -> str:
+        """Format date from YYYYMMDD to YYYY-MM-DD"""
+        if not date_str or len(date_str) != 8:
+            return date_str
+        
+        try:
+            return f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+        except:
+            return date_str
+    
+
+    
+    def extract_image(self, decoded_data: Dict[str, Any], output_path: Optional[str] = None) -> Optional[str]:
+        """
+        Extract and save the license photo from decoded data
+        
+        Args:
+            decoded_data: Result from decode_barcode_data()
+            output_path: Optional path to save image (default: license_photo.jpg/png)
+            
+        Returns:
+            Path to saved image file, or None if no image
+        """
+        if not decoded_data.get("has_image", False):
+            print("No image found in barcode data")
+            return None
+        
+        if not PIL_AVAILABLE:
+            print("PIL not available - cannot extract image")
+            return None
+        
+        try:
+            # Decode image from base64
+            image_data = base64.b64decode(decoded_data["image_base64"])
+            
+            # Determine file extension
+            image_format = decoded_data.get("image_format", "Unknown")
+            if image_format == "JPEG":
+                ext = ".jpg"
+            elif image_format == "PNG":
+                ext = ".png"
+            else:
+                ext = ".bin"  # Unknown format
+            
+            # Set output path
+            if output_path is None:
+                output_path = f"license_photo{ext}"
+            
+            # Save image
+            with open(output_path, 'wb') as f:
+                f.write(image_data)
+            
+            print(f"✓ Image extracted and saved to: {output_path}")
+            print(f"  Format: {image_format}")
+            print(f"  Size: {len(image_data)} bytes")
+            
+            # Try to get image dimensions
+            try:
+                img = Image.open(io.BytesIO(image_data))
+                print(f"  Dimensions: {img.size[0]}x{img.size[1]} pixels")
+            except:
+                pass
+            
+            return output_path
+            
+        except Exception as e:
+            print(f"Failed to extract image: {e}")
+            return None
+    
+    def print_license_info(self, decoded_data: Dict[str, Any]):
+        """Print formatted license information"""
+        license_data = decoded_data.get("license_data", {})
+        
+        print("\n" + "="*60)
+        print("📄 MADAGASCAR DRIVER'S LICENSE - DECODED")
+        print("="*60)
+        
+        # Personal Information
+        print("\n👤 PERSONAL INFORMATION:")
+        print(f"  Name: {license_data.get('person_name', 'N/A')}")
+        print(f"  ID Number: {license_data.get('id_number', 'N/A')}")
+        print(f"  Sex: {license_data.get('sex', 'N/A')}")
+        print(f"  Date of Birth: {license_data.get('date_of_birth', 'N/A')}")
+        
+        # License Information
+        print("\n🪪 LICENSE INFORMATION:")
+        print(f"  License Number: {license_data.get('license_number', 'N/A')}")
+        print(f"  License Codes: {', '.join(license_data.get('license_codes', [])) or 'None'}")
+        print(f"  Valid From: {license_data.get('valid_from', 'N/A')}")
+        print(f"  Valid Until: {license_data.get('valid_to', 'N/A')}")
+        
+        # Restrictions
+        vehicle_restrictions = license_data.get('vehicle_restrictions', [])
+        driver_restrictions = license_data.get('driver_restrictions', [])
+        print(f"  Vehicle Restrictions: {', '.join(vehicle_restrictions) or 'None'}")
+        print(f"  Driver Restrictions: {', '.join(driver_restrictions) or 'None'}")
+        
+        # Technical Information
+        print("\n🔧 TECHNICAL INFORMATION:")
+        print(f"  Format Version: {license_data.get('format_version', 'N/A')}")
+        print(f"  Country: {license_data.get('country', 'N/A')}")
+        print(f"  Decoding Format: {decoded_data.get('decoding_format', 'N/A')}")
+        print(f"  Total Payload Size: {decoded_data.get('total_payload_size', 0)} bytes")
+        
+        # Security Information
+        print("\n🔐 SECURITY:")
+        print(f"  Encryption: Static Key XOR")
+        print(f"  Compression: zlib level 9")
+        print(f"  Data Format: 9-field pipe-delimited")
+        
+        # Image Information
+        if decoded_data.get("has_image", False):
+            print(f"\n📷 EMBEDDED PHOTO:")
+            print(f"  Status: Present")
+            print(f"  Size: {decoded_data.get('image_size_bytes', 0)} bytes")
+            print(f"  Format: {decoded_data.get('image_format', 'Unknown')}")
+        else:
+            print(f"\n📷 EMBEDDED PHOTO:")
+            print(f"  Status: Not present")
+        
+        print("\n" + "="*60)
+
+
+def main():
+    """Main command-line interface"""
+    parser = argparse.ArgumentParser(
+        description="Offline decoder for Madagascar driver's license barcodes (Standardized Format)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Decode hex data from barcode scan
+  python offline_barcode_decoder.py --data "78da016f0390fc424a20534348555454457c343536..."
+  
+  # Read hex data from file
+  python offline_barcode_decoder.py --file barcode_data.txt
+  
+  # Interactive mode
+  python offline_barcode_decoder.py --interactive
+  
+  # Extract embedded photo
+  python offline_barcode_decoder.py --data "78da01..." --extract-image license_photo.jpg
+  
+  # Output as JSON
+  python offline_barcode_decoder.py --data "78da01..." --json
+
+Security:
+  - Encryption: Static key XOR (length-preserving)
+  - Compression: zlib level 9
+  - Format: 9-field pipe-delimited Madagascar standard
+        """
+    )
+    
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--data", help="Hex-encoded barcode data from PDF417 scan")
+    group.add_argument("--file", help="File containing hex-encoded barcode data")
+    group.add_argument("--interactive", action="store_true", help="Interactive mode - enter hex data manually")
+    
+    parser.add_argument("--extract-image", metavar="PATH", help="Extract embedded photo to specified path")
+    parser.add_argument("--json", action="store_true", help="Output decoded data as JSON")
+    parser.add_argument("--quiet", "-q", action="store_true", help="Quiet mode (minimal output)")
+    
+    args = parser.parse_args()
+    
+    # Initialize decoder
+    decoder = MadagascarLicenseDecoder()
+    
+    # Get input data
+    if args.data:
+        scanned_data = args.data
+    elif args.file:
+        try:
+            with open(args.file, 'r') as f:
+                scanned_data = f.read().strip()
+        except Exception as e:
+            print(f"ERROR: Failed to read file {args.file}: {e}")
+            sys.exit(1)
+    elif args.interactive:
+        print("🔍 Interactive Mode - Madagascar License Barcode Decoder")
+        print("Enter the hex-encoded barcode data from your PDF417 scan:")
+        print("(Example: 78da016f0390fc424a20534348555454457c343536...)")
+        print("Type 'quit' to exit.")
+        scanned_data = input("Hex data > ").strip()
+        if scanned_data.lower() in ['quit', 'exit', 'q']:
+            sys.exit(0)
+    
+    # Decode the data
+    try:
+        if not args.quiet:
+            print("🔍 Decoding barcode data...")
+        
+        decoded_data = decoder.decode_barcode_data(scanned_data)
+        
+        if args.json:
+            # Output as JSON
+            print(json.dumps(decoded_data, indent=2))
+        else:
+            # Pretty print
+            if not args.quiet:
+                decoder.print_license_info(decoded_data)
+        
+        # Extract image if requested
+        if args.extract_image:
+            decoder.extract_image(decoded_data, args.extract_image)
+        
+    except Exception as e:
+        print(f"ERROR: {e}")
+        if not args.quiet:
+            print("\nTroubleshooting tips:")
+            print("1. Ensure the barcode was scanned completely")
+            print("2. Check that the data is in hex format (no spaces or prefixes)")
+            print("3. Verify the encryption key matches your system")
+            print("4. Ensure the barcode uses the standardized Madagascar format")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
+
+# Example usage for integration:
+"""
+# Simple integration example:
+decoder = MadagascarLicenseDecoder()
+
+# Decode barcode data (hex string from PDF417 scan)
+hex_data = "78da016f0390fc424a20534348555454457c343536373430323239363234..."
+result = decoder.decode_barcode_data(hex_data)
+
+# Access decoded information
+license_info = result["license_data"]
+person_name = license_info["person_name"]        # "BJ SCHUTTE"
+license_number = license_info["license_number"]  # "MGD0154747899"
+license_codes = license_info["license_codes"]    # ["B", "C"]
+
+# Check for embedded photo
+if result["has_image"]:
+    # Extract photo
+    decoder.extract_image(result, "license_photo.jpg")
+    
+    # Or get base64 data
+    photo_base64 = result["image_base64"]
+"""
