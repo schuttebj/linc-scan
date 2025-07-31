@@ -18,6 +18,7 @@ export const AlternativeScanner: React.FC<AlternativeScannerProps> = ({
   const [error, setError] = useState<string>('');
   const [status, setStatus] = useState<string>('');
   const [scanAttempts, setScanAttempts] = useState<number>(0);
+  const [rawData, setRawData] = useState<string>('');
 
   // Start camera stream
   const startCamera = useCallback(async () => {
@@ -128,6 +129,7 @@ export const AlternativeScanner: React.FC<AlternativeScannerProps> = ({
         if (zxingResult) {
           console.log('🔍 ✅ Barcode found with ZXing!', zxingResult);
           setStatus('✅ Barcode detected!');
+          setRawData(zxingResult); // Store raw data for display
           onScan(zxingResult);
           stopScanning();
           return;
@@ -223,20 +225,77 @@ export const AlternativeScanner: React.FC<AlternativeScannerProps> = ({
               </div>
             </div>
             
-            {status && (
-              <div className="scanner-status">
-                {isScanning && <span className="pulse">🔍 </span>}
-                {status}
-                {scanAttempts > 0 && (
-                  <span style={{ marginLeft: '8px', fontSize: '12px' }}>
-                    ({scanAttempts} attempts)
-                  </span>
-                )}
-              </div>
-            )}
+
           </div>
         )}
       </div>
+
+      {/* Status Display (outside video to prevent jumping) */}
+      {status && (
+        <div style={{ 
+          textAlign: 'center', 
+          padding: '12px',
+          background: '#f8f9fa',
+          borderRadius: '8px',
+          margin: '12px 0',
+          border: '1px solid #dee2e6'
+        }}>
+          <div style={{ fontWeight: 'bold', color: status.includes('✅') ? '#28a745' : '#666' }}>
+            {isScanning && <span className="pulse">🔍 </span>}
+            {status}
+          </div>
+          {scanAttempts > 0 && (
+            <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+              Scan attempts: {scanAttempts}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Raw Data Display */}
+      {rawData && (
+        <div style={{ 
+          background: '#e7f3ff',
+          border: '1px solid #b8daff',
+          borderRadius: '8px',
+          padding: '12px',
+          margin: '12px 0'
+        }}>
+          <h4 style={{ color: '#004085', marginBottom: '8px' }}>📊 Raw Barcode Data Detected</h4>
+          <div style={{ 
+            fontSize: '12px',
+            fontFamily: 'monospace',
+            background: '#fff',
+            padding: '8px',
+            borderRadius: '4px',
+            border: '1px solid #b8daff',
+            wordBreak: 'break-all',
+            maxHeight: '150px',
+            overflowY: 'auto'
+          }}>
+            <strong>Length:</strong> {rawData.length} characters<br/>
+            <strong>Type:</strong> {rawData.startsWith('http') ? 'URL/QR Code' : 'Data/Barcode'}<br/>
+            <strong>Data:</strong><br/>
+            {rawData}
+          </div>
+          <div style={{ textAlign: 'center', marginTop: '8px' }}>
+            <button 
+              onClick={() => setRawData('')}
+              style={{ 
+                background: '#004085', 
+                color: 'white', 
+                border: 'none', 
+                padding: '4px 8px', 
+                borderRadius: '4px',
+                fontSize: '12px',
+                cursor: 'pointer'
+              }}
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="text-center mt-4">
         {!streamRef.current ? (

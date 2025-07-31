@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { MadagascarLicenseDecoder } from '../utils/licenseDecoder';
 
 interface DiagnosticPanelProps {
   onScan: (data: string) => void;
@@ -7,6 +8,7 @@ interface DiagnosticPanelProps {
 export const DiagnosticPanel: React.FC<DiagnosticPanelProps> = ({ onScan }) => {
   const [browserInfo, setBrowserInfo] = useState<any>({});
   const [cameraInfo, setCameraInfo] = useState<any>({});
+  const decoder = new MadagascarLicenseDecoder();
 
   useEffect(() => {
     // Get browser info
@@ -185,6 +187,70 @@ export const DiagnosticPanel: React.FC<DiagnosticPanelProps> = ({ onScan }) => {
             style={{ fontSize: '12px', margin: '4px' }}
           >
             Test Pako
+          </button>
+        </div>
+      </div>
+
+      {/* Enhanced Debugging */}
+      <div style={{ marginBottom: '20px' }}>
+        <h4>🔍 Enhanced Decoder Debugging</h4>
+        <p style={{ fontSize: '14px', color: '#666', marginBottom: '12px' }}>
+          These tools help identify exactly where the decoding fails:
+        </p>
+        
+        <div style={{ 
+          background: '#f8f9fa', 
+          padding: '12px', 
+          borderRadius: '8px',
+          fontSize: '12px'
+        }}>
+          <button 
+            onClick={() => {
+              try {
+                console.log('🧪 Testing with known working sample...');
+                const result = decoder.testWithKnownSample();
+                console.log('Known sample result:', result);
+                if (result.success) {
+                  alert('✅ Known sample test: SUCCESS! Decoder is working correctly.');
+                } else {
+                  alert(`❌ Known sample test failed: ${result.error}`);
+                }
+              } catch (err) {
+                console.error('Known sample test error:', err);
+                alert(`❌ Known sample test error: ${err}`);
+              }
+            }}
+            className="btn btn-secondary"
+            style={{ fontSize: '12px', margin: '4px' }}
+          >
+            🧪 Test Known Working Sample
+          </button>
+
+          <button 
+            onClick={() => {
+              const testData = "78da4d8db10ac2300c06e0b3a4e80a75b41b8e8a1c38c46a89a12c29c6a826c6b24d";
+              console.log('🔍 Running step-by-step debug...');
+              const debug = decoder.debugDecoding(testData);
+              console.log('Debug results:', debug);
+              
+              // Show detailed results
+              let message = "🔍 STEP-BY-STEP DEBUG RESULTS:\n\n";
+              message += `Step 1 (Hex decode): ${debug.step1_success ? '✅ SUCCESS' : '❌ FAILED'}\n`;
+              message += `Step 2 (XOR decrypt): ${debug.step2_success ? '✅ SUCCESS' : '❌ FAILED'}\n`;
+              message += `  - First byte: ${debug.step2_first_byte} (should be 0x78 for zlib)\n`;
+              message += `  - Is zlib header: ${debug.step2_is_zlib_header ? 'YES' : 'NO'}\n`;
+              message += `Step 3 (zlib decompress): ${debug.step3_success ? '✅ SUCCESS' : '❌ FAILED'}\n`;
+              if (!debug.step3_success) {
+                message += `  - Error: ${debug.step3_error}\n`;
+              }
+              message += `Step 4 (Parse): ${debug.step4_success ? '✅ SUCCESS' : '❌ FAILED'}\n`;
+              
+              alert(message);
+            }}
+            className="btn btn-secondary"
+            style={{ fontSize: '12px', margin: '4px' }}
+          >
+            🔍 Step-by-Step Debug
           </button>
         </div>
       </div>

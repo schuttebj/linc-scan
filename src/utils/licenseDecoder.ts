@@ -1,4 +1,4 @@
-import { inflate } from 'pako';
+import { inflate, deflate } from 'pako';
 
 export interface LicenseData {
   person_name: string;
@@ -43,14 +43,22 @@ export class MadagascarLicenseDecoder {
   public decodeBarcodeData(scannedData: string): DecodedResult {
     try {
       console.log("=== MADAGASCAR LICENSE BARCODE DECODER ===");
+      console.log("Input data:", scannedData.substring(0, 100) + "...");
       
       // Step 1: Convert hex string to binary
       const binaryData = this.hexToBinary(scannedData);
       console.log(`Step 1 - Hex decode: ${scannedData.length} chars → ${binaryData.length} bytes`);
+      console.log("Binary data preview:", Array.from(binaryData.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '));
       
       // Step 2: Decrypt with static key XOR
       const decryptedData = this.staticDecrypt(binaryData);
       console.log(`Step 2 - Decrypt: ${binaryData.length} → ${decryptedData.length} bytes`);
+      console.log("Decrypted data preview:", Array.from(decryptedData.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+      
+      // Check if data looks like zlib (should start with 0x78)
+      if (decryptedData.length > 0) {
+        console.log(`First byte: 0x${decryptedData[0].toString(16)} (zlib should start with 0x78)`);
+      }
       
       // Step 3: Decompress with zlib
       const decompressedData = this.decompressData(decryptedData);
@@ -64,6 +72,12 @@ export class MadagascarLicenseDecoder {
       
     } catch (error) {
       console.error("Decoding error:", error);
+      console.error("Error details:", {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      
       return {
         success: false,
         license_data: {} as LicenseData,
@@ -265,5 +279,92 @@ export class MadagascarLicenseDecoder {
       binary += String.fromCharCode(buffer[i]);
     }
     return btoa(binary);
+  }
+
+  /**
+   * Debug method to test each step individually
+   */
+  public debugDecoding(scannedData: string): { [key: string]: any } {
+    const debug: { [key: string]: any } = {};
+    
+    try {
+      console.log("🔍 DEBUG: Starting step-by-step decoding");
+      
+      // Step 1: Hex decode
+      debug.step1_input = scannedData.substring(0, 100);
+      debug.step1_input_length = scannedData.length;
+      
+      const binaryData = this.hexToBinary(scannedData);
+      debug.step1_output_length = binaryData.length;
+      debug.step1_output_preview = Array.from(binaryData.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+      debug.step1_success = true;
+      
+      // Step 2: XOR decrypt
+      const decryptedData = this.staticDecrypt(binaryData);
+      debug.step2_output_length = decryptedData.length;
+      debug.step2_output_preview = Array.from(decryptedData.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+      debug.step2_first_byte = `0x${decryptedData[0].toString(16)}`;
+      debug.step2_is_zlib_header = decryptedData[0] === 0x78; // zlib magic number
+      debug.step2_success = true;
+      
+      // Step 3: zlib decompress
+      try {
+        const decompressedData = this.decompressData(decryptedData);
+        debug.step3_output_length = decompressedData.length;
+        debug.step3_output_preview = new TextDecoder().decode(decompressedData.slice(0, 50));
+        debug.step3_success = true;
+        
+        // Step 4: Parse
+        try {
+          const result = this.parseMadagascarFormat(decompressedData);
+          debug.step4_success = true;
+          debug.step4_result = result;
+        } catch (parseError) {
+          debug.step4_success = false;
+          debug.step4_error = parseError instanceof Error ? parseError.message : 'Parse error';
+        }
+        
+      } catch (zlibError) {
+        debug.step3_success = false;
+        debug.step3_error = zlibError instanceof Error ? zlibError.message : 'Zlib error';
+      }
+      
+    } catch (error) {
+      debug.general_error = error instanceof Error ? error.message : 'Unknown error';
+    }
+    
+    console.log("🔍 DEBUG Results:", debug);
+    return debug;
+  }
+
+  /**
+   * Test with a known working sample
+   */
+  public testWithKnownSample(): DecodedResult {
+    // Create a test sample that should work
+    console.log("🧪 Testing with constructed sample...");
+    
+    // Create test license data
+    const testData = "John Doe|123456789012|19800115|LIC1234567890|20200101-20250101|B,C|None|None|M";
+    console.log("Test license data:", testData);
+    
+    // Compress with zlib (use deflate for compression)
+    const compressed = deflate(new TextEncoder().encode(testData));
+    console.log("Compressed length:", compressed.length);
+    console.log("Compressed preview:", Array.from(compressed.slice(0, 8)).map(b => `0x${b.toString(16)}`).join(' '));
+    
+    // Encrypt with XOR
+    const keyBytes = new TextEncoder().encode(MadagascarLicenseDecoder.STATIC_ENCRYPTION_KEY);
+    const encrypted = new Uint8Array(compressed.length);
+    for (let i = 0; i < compressed.length; i++) {
+      encrypted[i] = compressed[i] ^ keyBytes[i % keyBytes.length];
+    }
+    
+    // Convert to hex
+    const hex = Array.from(encrypted).map(b => b.toString(16).padStart(2, '0')).join('');
+    console.log("Generated hex:", hex);
+    
+    // Now try to decode it
+    return this.decodeBarcodeData(hex);
   }
 }

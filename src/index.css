@@ -57,11 +57,13 @@ body {
   border-radius: 12px;
   overflow: hidden;
   background: #000;
+  aspect-ratio: 4/3; /* Consistent aspect ratio */
 }
 
 .scanner-video {
   width: 100%;
-  height: auto;
+  height: 100%;
+  object-fit: cover; /* Maintain aspect ratio, crop if needed */
   display: block;
 }
 
