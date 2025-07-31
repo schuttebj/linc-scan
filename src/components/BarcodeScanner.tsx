@@ -35,6 +35,11 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       setError('');
       setStatus('Starting camera...');
       
+      // Check if getUserMedia is available
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Camera access not supported. Ensure you\'re using HTTPS.');
+      }
+      
       const constraints: MediaStreamConstraints = {
         video: {
           facingMode: 'environment', // Use back camera on mobile
@@ -52,8 +57,21 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         setStatus('Camera ready - Position barcode in viewfinder');
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to access camera';
-      setError(`Camera error: ${errorMessage}`);
+      let errorMessage = 'Failed to access camera';
+      
+      if (err instanceof Error) {
+        if (err.name === 'NotAllowedError') {
+          errorMessage = 'Camera permission denied. Please allow camera access and refresh.';
+        } else if (err.name === 'NotFoundError') {
+          errorMessage = 'No camera found on this device.';
+        } else if (err.name === 'NotSupportedError') {
+          errorMessage = 'Camera not supported. Try using HTTPS or a different browser.';
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      
+      setError(errorMessage);
       setStatus('');
       console.error('Camera error:', err);
     }
@@ -138,13 +156,33 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
 
       {error && (
         <div className="error">
-          <strong>Error:</strong> {error}
+          <strong>Camera Error:</strong> {error}
+          
+          {error.includes('permission') && (
+            <div style={{ marginTop: '12px', fontSize: '14px' }}>
+              <strong>🔧 Quick Fixes:</strong>
+              <ul style={{ textAlign: 'left', marginLeft: '16px', marginTop: '8px' }}>
+                <li>Click the 🔒 lock icon in your address bar</li>
+                <li>Set Camera to "Allow"</li>
+                <li>Refresh this page</li>
+                <li>Try in a different browser (Chrome/Safari recommended)</li>
+              </ul>
+            </div>
+          )}
+          
+          {error.includes('HTTPS') && (
+            <div style={{ marginTop: '12px', fontSize: '14px', background: '#fff3cd', padding: '8px', borderRadius: '4px', color: '#856404' }}>
+              <strong>⚠️ HTTPS Required:</strong> Camera access requires a secure connection. 
+              Deploy to Vercel or use <code>https://localhost:3000</code> for testing.
+            </div>
+          )}
+          
           <div className="mt-4">
             <button 
               onClick={startCamera}
               className="btn btn-secondary"
             >
-              Try Again
+              🔄 Try Again
             </button>
           </div>
         </div>
