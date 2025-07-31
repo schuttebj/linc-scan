@@ -1,12 +1,16 @@
 import React, { useState, useCallback } from 'react';
 import { BarcodeScanner } from './components/BarcodeScanner';
+import { AlternativeScanner } from './components/AlternativeScanner';
+import { DiagnosticPanel } from './components/DiagnosticPanel';
 import { LicenseResults } from './components/LicenseResults';
 import { MadagascarLicenseDecoder, DecodedResult } from './utils/licenseDecoder';
 
-type AppState = 'scanning' | 'results' | 'manual';
+type AppState = 'scanning' | 'results' | 'manual' | 'diagnostics';
+type ScannerType = 'original' | 'alternative';
 
 function App() {
   const [appState, setAppState] = useState<AppState>('scanning');
+  const [scannerType, setScannerType] = useState<ScannerType>('original');
   const [isScanning, setIsScanning] = useState(false);
   const [decodedResult, setDecodedResult] = useState<DecodedResult | null>(null);
   const [manualInput, setManualInput] = useState('');
@@ -108,11 +112,48 @@ function App() {
       {/* Scanner View */}
       {appState === 'scanning' && (
         <>
-          <BarcodeScanner
-            onScan={handleScan}
-            isScanning={isScanning}
-            onScanningChange={setIsScanning}
-          />
+          {/* Scanner Type Selection */}
+          <div className="card">
+            <div className="text-center">
+              <h3>📱 Scanner Options</h3>
+              <p style={{ marginBottom: '16px', color: '#666' }}>
+                {scannerType === 'original' 
+                  ? 'Using ZXing PDF417 Reader (may have issues)' 
+                  : 'Using Enhanced Multi-Format Scanner (recommended)'}
+              </p>
+              <div>
+                <button 
+                  onClick={() => setScannerType('original')}
+                  className={`btn ${scannerType === 'original' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ margin: '4px' }}
+                >
+                  📄 Original PDF417
+                </button>
+                <button 
+                  onClick={() => setScannerType('alternative')}
+                  className={`btn ${scannerType === 'alternative' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ margin: '4px' }}
+                >
+                  🔍 Enhanced Scanner
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Render selected scanner */}
+          {scannerType === 'original' ? (
+            <BarcodeScanner
+              onScan={handleScan}
+              isScanning={isScanning}
+              onScanningChange={setIsScanning}
+            />
+          ) : (
+            <AlternativeScanner
+              onScan={handleScan}
+              isScanning={isScanning}
+              onScanningChange={setIsScanning}
+            />
+          )}
           
           {/* Mode Toggle */}
           <div className="card">
@@ -121,8 +162,16 @@ function App() {
               <button 
                 onClick={() => setAppState('manual')}
                 className="btn btn-secondary"
+                style={{ margin: '4px' }}
               >
                 ⌨️ Enter Hex Data Manually
+              </button>
+              <button 
+                onClick={() => setAppState('diagnostics')}
+                className="btn btn-secondary"
+                style={{ margin: '4px' }}
+              >
+                🔧 Run Diagnostics
               </button>
             </div>
           </div>
@@ -175,6 +224,24 @@ function App() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Diagnostics View */}
+      {appState === 'diagnostics' && (
+        <>
+          <DiagnosticPanel onScan={handleScan} />
+          
+          <div className="card">
+            <div className="text-center">
+              <button 
+                onClick={() => setAppState('scanning')}
+                className="btn btn-primary"
+              >
+                📷 Back to Scanner
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* Footer Info */}
