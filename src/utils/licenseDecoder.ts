@@ -268,96 +268,40 @@ export class MadagascarLicenseDecoder {
    */
   private parseMadagascarFormat(decompressedData: Uint8Array): DecodedResult {
             try {
-            // Check for image separator (handle both binary and text format)
-            const decompressedText = new TextDecoder().decode(decompressedData);
-            const textImageSeparatorIndex = decompressedText.indexOf("||IMG||");
+            // FIRST: Check for binary ||IMG|| separator (preserves JPEG integrity)
+            const imageSeparator = new TextEncoder().encode("||IMG||");
+            const binaryImageSeparatorIndex = this.findBytes(decompressedData, imageSeparator);
             
             let licenseDataBytes: Uint8Array;
             let imageBytes: Uint8Array = new Uint8Array(0);
             let hasImage = false;
             
-            if (textImageSeparatorIndex !== -1) {
-                // Handle text-based image data
-                console.log("🖼️ Found ||IMG|| separator in text format");
+            if (binaryImageSeparatorIndex !== -1) {
+                console.log(`🖼️ Found ||IMG|| separator at binary position ${binaryImageSeparatorIndex}`);
                 hasImage = true;
                 
-                const licenseDataText = decompressedText.substring(0, textImageSeparatorIndex);
-                const imageDataText = decompressedText.substring(textImageSeparatorIndex + 7); // Skip "||IMG||"
+                // Split at binary level to preserve JPEG data
+                licenseDataBytes = decompressedData.slice(0, binaryImageSeparatorIndex);
+                imageBytes = decompressedData.slice(binaryImageSeparatorIndex + imageSeparator.length);
                 
-                licenseDataBytes = new TextEncoder().encode(licenseDataText);
+                console.log(`📄 License data: ${licenseDataBytes.length} bytes`);
+                console.log(`📸 Raw image data: ${imageBytes.length} bytes`);
                 
-                // Convert image text back to bytes (handle pipe-separated format)
-                console.log(`📸 Converting image text to bytes: ${imageDataText.length} chars`);
-                console.log(`📋 Image text preview: ${imageDataText.substring(0, 50)}...`);
-                
-                // Check if image data is pipe-separated
-                if (imageDataText.includes('|')) {
-                    console.log("🔄 Processing pipe-separated image data");
-                    // Split by pipes and convert each segment
-                    const imageParts = imageDataText.split('|').filter(part => part.length > 0);
-                    console.log(`📊 Found ${imageParts.length} image data segments`);
+                // Check JPEG signature
+                if (imageBytes.length >= 2 && imageBytes[0] === 0xFF && imageBytes[1] === 0xD8) {
+                    console.log("✅ Valid JPEG signature found! (0xFF 0xD8)");
+                } else if (imageBytes.length > 0) {
+                    console.log(`⚠️ No JPEG signature. First bytes: [${Array.from(imageBytes.slice(0, 10)).map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ')}]`);
                     
-                    // Convert each part that looks like hex or bytes
-                    let imageDataBytes: number[] = [];
-                    
-                    for (const part of imageParts) {
-                        if (part === 'JFIF' || part === 'C') {
-                            // Add these as ASCII
-                            for (let i = 0; i < part.length; i++) {
-                                imageDataBytes.push(part.charCodeAt(i));
-                            }
-                        } else if (/^[0-9A-Fa-f]+$/.test(part) && part.length % 2 === 0) {
-                            // Looks like hex data
-                            for (let i = 0; i < part.length; i += 2) {
-                                imageDataBytes.push(parseInt(part.substr(i, 2), 16));
-                            }
-                        } else if (part.length === 1) {
-                            // Single character, convert to byte
-                            imageDataBytes.push(part.charCodeAt(0) & 0xFF);
-                        } else {
-                            // Multi-character string, convert each char
-                            for (let i = 0; i < part.length; i++) {
-                                imageDataBytes.push(part.charCodeAt(i) & 0xFF);
-                            }
-                        }
-                    }
-                    
-                    imageBytes = new Uint8Array(imageDataBytes);
-                    console.log(`✅ Converted pipe-separated data: ${imageBytes.length} bytes`);
-                    
-                    // Try to create a proper JPEG header if missing
-                    if (imageBytes.length > 0 && imageBytes[0] !== 0xFF) {
-                        console.log("🔧 Adding JPEG header");
-                        const jpegHeader = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0]); // JPEG SOI + APP0
-                        const newImageBytes = new Uint8Array(jpegHeader.length + imageBytes.length);
-                        newImageBytes.set(jpegHeader);
-                        newImageBytes.set(imageBytes, jpegHeader.length);
-                        imageBytes = newImageBytes;
-                    }
-                } else {
-                    // Original character-by-character conversion
-                    imageBytes = new Uint8Array(imageDataText.length);
-                    for (let i = 0; i < imageDataText.length; i++) {
-                        imageBytes[i] = imageDataText.charCodeAt(i) & 0xFF;
+                    // Check if it's a JFIF JPEG (sometimes starts differently)
+                    const headerText = new TextDecoder('utf-8', { fatal: false }).decode(imageBytes.slice(0, 20));
+                    if (headerText.includes('JFIF')) {
+                        console.log("🔍 Found JFIF header in image data");
                     }
                 }
-                
-                console.log(`Found embedded image: ${imageBytes.length} bytes`);
             } else {
-                // Try binary format
-                const imageSeparator = new TextEncoder().encode("||IMG||");
-                const binaryImageSeparatorIndex = this.findBytes(decompressedData, imageSeparator);
-                
-                if (binaryImageSeparatorIndex !== -1) {
-                    console.log("🖼️ Found ||IMG|| separator in binary format");
-                    hasImage = true;
-                    licenseDataBytes = decompressedData.slice(0, binaryImageSeparatorIndex);
-                    imageBytes = decompressedData.slice(binaryImageSeparatorIndex + imageSeparator.length);
-                    console.log(`Found embedded image: ${imageBytes.length} bytes`);
-                } else {
-                    licenseDataBytes = decompressedData;
-                    console.log("No embedded image found");
-                }
+                console.log("🔍 No binary ||IMG|| separator found, treating all as license data");
+                licenseDataBytes = decompressedData;
             }
       
       // Parse license data string
