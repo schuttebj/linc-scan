@@ -213,7 +213,16 @@ export class MadagascarLicenseDecoder {
     const matches = readableText.match(pipePattern);
     if (matches && matches.length > 0) {
       console.log("✅ Found pipe-delimited pattern:", matches[0]);
-      return new TextEncoder().encode(matches[0]);
+      
+      // Check if there's image data after the license data
+      const imgSeparatorIndex = readableText.indexOf('||IMG||');
+      if (imgSeparatorIndex !== -1) {
+        console.log("🖼️ Image data found after ||IMG|| separator");
+        const fullDataWithImage = readableText; // Keep the full text including image
+        return new TextEncoder().encode(fullDataWithImage);
+      } else {
+        return new TextEncoder().encode(matches[0]);
+      }
     }
     
     // Method 4: Try partial zlib (skip corrupted parts)
@@ -258,28 +267,49 @@ export class MadagascarLicenseDecoder {
    * Optional: ||IMG|| separator followed by image data
    */
   private parseMadagascarFormat(decompressedData: Uint8Array): DecodedResult {
-    try {
-      // Check for image separator
-      const imageSeparator = new TextEncoder().encode("||IMG||");
-      const hasImage = this.findBytes(decompressedData, imageSeparator) !== -1;
-      
-      let licenseDataBytes: Uint8Array;
-      let imageBytes: Uint8Array = new Uint8Array(0);
-      
-      if (hasImage) {
-        // Split license data and image
-        const separatorIndex = this.findBytes(decompressedData, imageSeparator);
-        if (separatorIndex !== -1) {
-          licenseDataBytes = decompressedData.slice(0, separatorIndex);
-          imageBytes = decompressedData.slice(separatorIndex + imageSeparator.length);
-          console.log(`Found embedded image: ${imageBytes.length} bytes`);
-        } else {
-          licenseDataBytes = decompressedData;
-        }
-      } else {
-        licenseDataBytes = decompressedData;
-        console.log("No embedded image found");
-      }
+            try {
+            // Check for image separator (handle both binary and text format)
+            const decompressedText = new TextDecoder().decode(decompressedData);
+            const textImageSeparatorIndex = decompressedText.indexOf("||IMG||");
+            
+            let licenseDataBytes: Uint8Array;
+            let imageBytes: Uint8Array = new Uint8Array(0);
+            let hasImage = false;
+            
+            if (textImageSeparatorIndex !== -1) {
+                // Handle text-based image data
+                console.log("🖼️ Found ||IMG|| separator in text format");
+                hasImage = true;
+                
+                const licenseDataText = decompressedText.substring(0, textImageSeparatorIndex);
+                const imageDataText = decompressedText.substring(textImageSeparatorIndex + 7); // Skip "||IMG||"
+                
+                licenseDataBytes = new TextEncoder().encode(licenseDataText);
+                
+                // Convert image text back to bytes
+                console.log(`📸 Converting image text to bytes: ${imageDataText.length} chars`);
+                imageBytes = new Uint8Array(imageDataText.length);
+                for (let i = 0; i < imageDataText.length; i++) {
+                    imageBytes[i] = imageDataText.charCodeAt(i) & 0xFF;
+                }
+                
+                console.log(`Found embedded image: ${imageBytes.length} bytes`);
+            } else {
+                // Try binary format
+                const imageSeparator = new TextEncoder().encode("||IMG||");
+                const binaryImageSeparatorIndex = this.findBytes(decompressedData, imageSeparator);
+                
+                if (binaryImageSeparatorIndex !== -1) {
+                    console.log("🖼️ Found ||IMG|| separator in binary format");
+                    hasImage = true;
+                    licenseDataBytes = decompressedData.slice(0, binaryImageSeparatorIndex);
+                    imageBytes = decompressedData.slice(binaryImageSeparatorIndex + imageSeparator.length);
+                    console.log(`Found embedded image: ${imageBytes.length} bytes`);
+                } else {
+                    licenseDataBytes = decompressedData;
+                    console.log("No embedded image found");
+                }
+            }
       
       // Parse license data string
       const licenseDataStr = new TextDecoder().decode(licenseDataBytes);
@@ -352,15 +382,29 @@ export class MadagascarLicenseDecoder {
         result.image_base64 = this.arrayBufferToBase64(imageBytes);
         
         // Try to determine image format
+        console.log("🔍 Image format detection:");
+        console.log("First 10 bytes:", Array.from(imageBytes.slice(0, 10)).map(b => `0x${b.toString(16)}`).join(' '));
+        
+        // Check for JPEG (multiple possible signatures)
         if (imageBytes.length >= 3 && 
             imageBytes[0] === 0xff && imageBytes[1] === 0xd8 && imageBytes[2] === 0xff) {
           result.image_format = "JPEG";
+          console.log("✅ Detected JPEG format (standard header)");
         } else if (imageBytes.length >= 4 && 
                    imageBytes[0] === 0x89 && imageBytes[1] === 0x50 && 
                    imageBytes[2] === 0x4e && imageBytes[3] === 0x47) {
           result.image_format = "PNG";
+          console.log("✅ Detected PNG format");
         } else {
-          result.image_format = "Unknown";
+          // Check if it starts with JFIF text (JPEG File Interchange Format)
+          const imageText = new TextDecoder().decode(imageBytes.slice(0, 10));
+          if (imageText.startsWith('JFIF')) {
+            result.image_format = "JPEG";
+            console.log("✅ Detected JPEG format (JFIF header)");
+          } else {
+            result.image_format = "Unknown";
+            console.log("❓ Unknown image format, first text:", imageText);
+          }
         }
       }
       
