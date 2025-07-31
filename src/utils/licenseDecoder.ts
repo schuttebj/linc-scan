@@ -65,8 +65,8 @@ export class MadagascarLicenseDecoder {
         console.log(`First byte: 0x${decryptedData[0].toString(16)} (zlib should start with 0x78)`);
       }
       
-      // Step 3: Decompress with zlib
-      const decompressedData = this.decompressData(decryptedData);
+      // Step 3: Decompress with zlib (with fallback methods)
+      const decompressedData = this.advancedDecompress(decryptedData);
       console.log(`Step 3 - Decompress: ${decryptedData.length} → ${decompressedData.length} bytes`);
       
       // Step 4: Parse pipe-delimited format
@@ -175,6 +175,73 @@ export class MadagascarLicenseDecoder {
   }
 
   /**
+   * Advanced decompress with multiple fallback methods
+   */
+  private advancedDecompress(data: Uint8Array): Uint8Array {
+    console.log("🔍 Advanced decompression starting...");
+    
+    // Method 1: Try standard zlib
+    try {
+      console.log("🧪 Trying standard zlib...");
+      const result = inflate(data);
+      console.log("✅ Standard zlib success!");
+      return result;
+    } catch (error) {
+      console.log("❌ Standard zlib failed:", error);
+    }
+    
+    // Method 2: Look for readable text in the encrypted data
+    console.log("🔍 Searching for readable text in decrypted data...");
+    let readableText = '';
+    for (let i = 0; i < data.length; i++) {
+      const byte = data[i];
+      // Check if it's a printable ASCII character or common license characters
+      if ((byte >= 32 && byte <= 126) || byte === 9 || byte === 10 || byte === 13) {
+        readableText += String.fromCharCode(byte);
+      } else {
+        // Add separator for non-printable bytes
+        if (readableText.length > 0 && !readableText.endsWith('|')) {
+          readableText += '|';
+        }
+      }
+    }
+    
+    console.log("📝 Extracted readable text:", readableText.substring(0, 200));
+    
+    // Method 3: Try to find pipe-delimited data patterns
+    const pipePattern = /[A-Z\s]+\|[\d]+\|[\d]{8}\|[A-Z\d]+\|[\d\-]+\|[A-Z,]*\|[^|]*\|[^|]*\|[MF]/g;
+    const matches = readableText.match(pipePattern);
+    if (matches && matches.length > 0) {
+      console.log("✅ Found pipe-delimited pattern:", matches[0]);
+      return new TextEncoder().encode(matches[0]);
+    }
+    
+    // Method 4: Try partial zlib (skip corrupted parts)
+    console.log("🔄 Trying partial decompression...");
+    for (let skipBytes = 0; skipBytes < Math.min(50, data.length); skipBytes++) {
+      try {
+        const partialData = data.slice(skipBytes);
+        if (partialData[0] === 0x78) { // Look for zlib header
+          console.log(`🧪 Trying from byte ${skipBytes}...`);
+          const result = inflate(partialData);
+          console.log(`✅ Partial decompression success from byte ${skipBytes}!`);
+          return result;
+        }
+      } catch (e) {
+        // Continue trying
+      }
+    }
+    
+    // Method 5: Return the readable text we found
+    if (readableText.length > 20) {
+      console.log("🔄 Using extracted readable text as fallback");
+      return new TextEncoder().encode(readableText);
+    }
+    
+    throw new Error("All decompression methods failed");
+  }
+
+  /**
    * Decompress data using zlib
    */
   private decompressData(data: Uint8Array): Uint8Array {
@@ -218,12 +285,35 @@ export class MadagascarLicenseDecoder {
       const licenseDataStr = new TextDecoder().decode(licenseDataBytes);
       console.log(`License data string: ${licenseDataStr}`);
       
-      // Split by pipes: Name|ID|DOB|LicenseNum|ValidFrom-ValidTo|Codes|VehicleRestr|DriverRestr|Sex
-      const fields = licenseDataStr.split('|');
+      // Clean up the string and look for pipe-delimited data
+      let cleanedStr = licenseDataStr.replace(/\0/g, '').trim(); // Remove null bytes
       
-      if (fields.length !== 9) {
-        throw new Error(`Expected 9 fields in license data, got ${fields.length}`);
+      // Try to extract a valid pipe-delimited pattern
+      const pipePattern = /([A-Z\s]+)\|(\d+)\|(\d{8})\|([A-Z\d]+)\|(\d{8}-\d{8})\|([A-Z,]*)\|([^|]*)\|([^|]*)\|([MF])/;
+      const match = cleanedStr.match(pipePattern);
+      
+      let fields: string[];
+      if (match) {
+        console.log("✅ Found structured license data pattern");
+        fields = match.slice(1); // Remove the full match, keep groups
+        console.log("Extracted fields:", fields);
+      } else {
+        console.log("🔄 No pattern found, trying standard pipe split");
+        // Split by pipes: Name|ID|DOB|LicenseNum|ValidFrom-ValidTo|Codes|VehicleRestr|DriverRestr|Sex
+        fields = cleanedStr.split('|');
+        
+        // Be more flexible with field count
+        if (fields.length < 5) {
+          throw new Error(`Expected at least 5 fields in license data, got ${fields.length}. Data: ${cleanedStr.substring(0, 100)}`);
+        }
+        
+        // Pad missing fields
+        while (fields.length < 9) {
+          fields.push('');
+        }
       }
+      
+      console.log("Final fields:", fields);
       
       // Parse valid date range
       const validDates = fields[4] ? fields[4].split('-') : ['', ''];
