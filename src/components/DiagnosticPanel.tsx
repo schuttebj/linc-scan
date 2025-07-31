@@ -342,6 +342,53 @@ export const DiagnosticPanel: React.FC<DiagnosticPanelProps> = ({ onScan }) => {
           >
             🔬 Analyze Image Data
           </button>
+
+          <button 
+            onClick={() => {
+              // Test the user's actual base64 data
+              const userBase64 = "/9j/4AAQSkZJRgABAQEASABIAAAKDSgxIyUoOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2NaPC8hMSJBUWFSMjRxcjs/QkB9LkFFOFg8PmEmQlBLUVlTWFxIagk4IE1fXyVZY05PPgk4bFI3MywobEEKMXs+IismQD5cITh6TzddaEVeXXY5I196WXJmYCgnPl1iWVY/NiZ2UGtaXD4sWVFCWXJxImRlCllBT3lmQCchOEgkPmY7ZWlPeDl2uFlmXEM9UkBHNlBsKF4iZCNNX31AUUlCLHF2DVtPCT5GfScNNit2YUlScE5HMTI5K2pkKmNcI1JTLnY/aVU0SyR5X2V0VGlse0U8WlhHS3QiPmZ5djEqRwpuZ1V0XEdAIkk0dzZGM2diMzpYIHVJcj5jVFNhWX12WHhBOVZZSkU8TCokL3hzb2gkInQtUCI+Ry1PekZ1RGFX///Z";
+              
+              try {
+                console.log('🔍 Analyzing user base64 data...');
+                const binaryString = atob(userBase64);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                  bytes[i] = binaryString.charCodeAt(i);
+                }
+                
+                console.log('📊 Total bytes:', bytes.length);
+                console.log('🔢 First 20 bytes (hex):', Array.from(bytes.slice(0, 20)).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
+                console.log('🔢 Last 10 bytes (hex):', Array.from(bytes.slice(-10)).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
+                
+                // Check for JPEG signature
+                if (bytes[0] === 0xFF && bytes[1] === 0xD8) {
+                  console.log('✅ Valid JPEG start signature (FF D8)');
+                } else {
+                  console.log('❌ Invalid JPEG start signature:', bytes[0].toString(16), bytes[1].toString(16));
+                }
+                
+                // Check for JPEG end signature
+                if (bytes[bytes.length-2] === 0xFF && bytes[bytes.length-1] === 0xD9) {
+                  console.log('✅ Valid JPEG end signature (FF D9)');
+                } else {
+                  console.log('❌ Invalid JPEG end signature:', bytes[bytes.length-2].toString(16), bytes[bytes.length-1].toString(16));
+                }
+                
+                // Try to view the image
+                const testUri = `data:image/jpeg;base64,${userBase64}`;
+                window.open(testUri, '_blank');
+                
+                alert(`Base64 Analysis Complete!\nBytes: ${bytes.length}\nSee console and new tab for details`);
+              } catch (err) {
+                console.error('Base64 analysis error:', err);
+                alert(`Error analyzing base64: ${err}`);
+              }
+            }}
+            className="btn btn-secondary"
+            style={{ fontSize: '12px', margin: '4px', background: '#17a2b8', color: 'white' }}
+          >
+            🧪 Test User Base64
+          </button>
         </div>
       </div>
 

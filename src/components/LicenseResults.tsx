@@ -133,10 +133,60 @@ export const LicenseResults: React.FC<LicenseResultsProps> = ({ result, onClear 
                   src={`data:image/${result.image_format?.toLowerCase() || 'jpeg'};base64,${result.image_base64}`}
                   alt="License Photo"
                   style={{ maxWidth: '150px', maxHeight: '200px' }}
+                  onLoad={() => console.log("✅ Image loaded successfully!")}
+                  onError={(e) => {
+                    console.error("❌ Image failed to load:", e);
+                    console.log("🔍 Image data details:");
+                    console.log("- has_image:", result.has_image);
+                    console.log("- image_format:", result.image_format);
+                    console.log("- image_size_bytes:", result.image_size_bytes);
+                    console.log("- base64 length:", result.image_base64?.length);
+                    console.log("- base64 preview:", result.image_base64?.substring(0, 50));
+                    console.log("- data URI:", `data:image/${result.image_format?.toLowerCase() || 'jpeg'};base64,${result.image_base64?.substring(0, 50)}...`);
+                  }}
                 />
                 <div style={{ fontSize: '12px', color: '#666', marginTop: '8px' }}>
                   <div>Format: {result.image_format || 'Unknown'}</div>
                   <div>Size: {result.image_size_bytes} bytes</div>
+                  <div>Base64 Length: {result.image_base64?.length || 0} chars</div>
+                  <div style={{ display: 'flex', gap: '4px', marginTop: '8px' }}>
+                    <button 
+                      onClick={() => {
+                        const dataUri = `data:image/${result.image_format?.toLowerCase() || 'jpeg'};base64,${result.image_base64}`;
+                        window.open(dataUri, '_blank');
+                      }}
+                      style={{
+                        padding: '4px 8px',
+                        fontSize: '10px',
+                        backgroundColor: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      🔍 Test Image in New Tab
+                    </button>
+                    <button 
+                      onClick={() => {
+                        // Test with a tiny valid JPEG (1x1 pixel red dot)
+                        const testJpeg = "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/AB//2Q==";
+                        const testUri = `data:image/jpeg;base64,${testJpeg}`;
+                        window.open(testUri, '_blank');
+                      }}
+                      style={{
+                        padding: '4px 8px',
+                        fontSize: '10px',
+                        backgroundColor: '#28a745',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      🧪 Test Valid JPEG
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (

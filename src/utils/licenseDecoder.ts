@@ -296,22 +296,38 @@ export class MadagascarLicenseDecoder {
                     // Check if it's pipe-separated JFIF format
                     const headerText = new TextDecoder('utf-8', { fatal: false }).decode(imageBytes.slice(0, 20));
                     if (headerText.includes('JFIF') && headerText.includes('|')) {
-                        console.log("🔧 Found pipe-separated JFIF format, reconstructing JPEG...");
+                        console.log("🔧 Found pipe-separated JFIF format, trying multiple approaches...");
                         
                         // Convert entire image data to text for pipe processing
                         const imageText = new TextDecoder('utf-8', { fatal: false }).decode(imageBytes);
                         console.log(`📋 Image text preview: ${imageText.substring(0, 50)}...`);
                         
-                        // Reconstruct JPEG from pipe-separated format
-                        imageBytes = this.reconstructJpegFromPipes(imageText);
-                        console.log(`🔧 Reconstructed JPEG: ${imageBytes.length} bytes`);
-                        
-                        // Verify reconstruction
-                        if (imageBytes.length >= 2 && imageBytes[0] === 0xFF && imageBytes[1] === 0xD8) {
-                            console.log("✅ JPEG reconstruction successful!");
-                        } else {
-                            console.log(`⚠️ JPEG reconstruction may have issues. First bytes: [${Array.from(imageBytes.slice(0, 4)).map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ')}]`);
+                        // TRY 1: Simple character-by-character conversion (no reconstruction)
+                        console.log("🔄 Method 1: Direct character conversion");
+                        const directBytes = new Uint8Array(imageBytes.length);
+                        for (let i = 0; i < imageBytes.length; i++) {
+                            directBytes[i] = imageBytes[i];
                         }
+                        console.log(`📋 Direct conversion first bytes: [${Array.from(directBytes.slice(0, 10)).map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ')}]`);
+                        
+                        // TRY 2: Reconstruct JPEG from pipe-separated format
+                        console.log("🔄 Method 2: JPEG reconstruction");
+                        const reconstructedBytes = this.reconstructJpegFromPipes(imageText);
+                        console.log(`📋 Reconstructed first bytes: [${Array.from(reconstructedBytes.slice(0, 10)).map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ')}]`);
+                        
+                        // Choose the method that produces a valid JPEG signature
+                        if (directBytes.length >= 2 && directBytes[0] === 0xFF && directBytes[1] === 0xD8) {
+                            console.log("✅ Using direct conversion (valid JPEG signature)");
+                            imageBytes = directBytes;
+                        } else if (reconstructedBytes.length >= 2 && reconstructedBytes[0] === 0xFF && reconstructedBytes[1] === 0xD8) {
+                            console.log("✅ Using reconstruction (valid JPEG signature)");
+                            imageBytes = reconstructedBytes;
+                        } else {
+                            console.log("⚠️ Neither method produced valid JPEG signature, using reconstruction anyway");
+                            imageBytes = reconstructedBytes;
+                        }
+                        
+                        console.log(`🔧 Final JPEG: ${imageBytes.length} bytes`);
                     }
                 }
             } else {
