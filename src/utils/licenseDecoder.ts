@@ -293,10 +293,25 @@ export class MadagascarLicenseDecoder {
                 } else if (imageBytes.length > 0) {
                     console.log(`⚠️ No JPEG signature. First bytes: [${Array.from(imageBytes.slice(0, 10)).map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ')}]`);
                     
-                    // Check if it's a JFIF JPEG (sometimes starts differently)
+                    // Check if it's pipe-separated JFIF format
                     const headerText = new TextDecoder('utf-8', { fatal: false }).decode(imageBytes.slice(0, 20));
-                    if (headerText.includes('JFIF')) {
-                        console.log("🔍 Found JFIF header in image data");
+                    if (headerText.includes('JFIF') && headerText.includes('|')) {
+                        console.log("🔧 Found pipe-separated JFIF format, reconstructing JPEG...");
+                        
+                        // Convert entire image data to text for pipe processing
+                        const imageText = new TextDecoder('utf-8', { fatal: false }).decode(imageBytes);
+                        console.log(`📋 Image text preview: ${imageText.substring(0, 50)}...`);
+                        
+                        // Reconstruct JPEG from pipe-separated format
+                        imageBytes = this.reconstructJpegFromPipes(imageText);
+                        console.log(`🔧 Reconstructed JPEG: ${imageBytes.length} bytes`);
+                        
+                        // Verify reconstruction
+                        if (imageBytes.length >= 2 && imageBytes[0] === 0xFF && imageBytes[1] === 0xD8) {
+                            console.log("✅ JPEG reconstruction successful!");
+                        } else {
+                            console.log(`⚠️ JPEG reconstruction may have issues. First bytes: [${Array.from(imageBytes.slice(0, 4)).map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ')}]`);
+                        }
                     }
                 }
             } else {
@@ -421,6 +436,70 @@ export class MadagascarLicenseDecoder {
     } catch {
       return dateStr;
     }
+  }
+
+  /**
+   * Reconstruct a JPEG from pipe-separated format
+   */
+  private reconstructJpegFromPipes(imageText: string): Uint8Array {
+    console.log("🔧 Reconstructing JPEG from pipe-separated data...");
+    
+    // Split by pipes and filter empty parts
+    const parts = imageText.split('|').filter(part => part.length > 0);
+    console.log(`📊 Found ${parts.length} pipe-separated parts`);
+    
+    // Start building JPEG byte array
+    const jpegBytes: number[] = [];
+    
+    // Add JPEG header (SOI - Start of Image)
+    jpegBytes.push(0xFF, 0xD8);
+    
+    // Process each part
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      
+      if (part === 'JFIF') {
+        // Add JFIF APP0 marker
+        jpegBytes.push(0xFF, 0xE0); // APP0 marker
+        jpegBytes.push(0x00, 0x10); // Length: 16 bytes
+        jpegBytes.push(0x4A, 0x46, 0x49, 0x46, 0x00); // "JFIF\0"
+        jpegBytes.push(0x01, 0x01); // Version 1.1
+        jpegBytes.push(0x01); // Units: inches
+        jpegBytes.push(0x00, 0x48, 0x00, 0x48); // X/Y density: 72 DPI
+        jpegBytes.push(0x00, 0x00); // Thumbnail width/height: 0
+      } else if (part === 'C') {
+        // This might be a quantization table or other marker
+        // For now, skip or handle as data
+        continue;
+      } else if (part.length === 1) {
+        // Single character - convert directly
+        jpegBytes.push(part.charCodeAt(0) & 0xFF);
+      } else if (part.length === 2 && /^[0-9A-Fa-f]+$/.test(part)) {
+        // Two-character hex
+        jpegBytes.push(parseInt(part, 16));
+      } else if (part.length > 2 && /^[0-9A-Fa-f]+$/.test(part) && part.length % 2 === 0) {
+        // Multi-character hex
+        for (let j = 0; j < part.length; j += 2) {
+          jpegBytes.push(parseInt(part.substr(j, 2), 16));
+        }
+      } else {
+        // Multi-character string - convert each character
+        for (let j = 0; j < part.length; j++) {
+          jpegBytes.push(part.charCodeAt(j) & 0xFF);
+        }
+      }
+    }
+    
+    // Add JPEG footer (EOI - End of Image) if not present
+    if (jpegBytes.length >= 2 && !(jpegBytes[jpegBytes.length-2] === 0xFF && jpegBytes[jpegBytes.length-1] === 0xD9)) {
+      jpegBytes.push(0xFF, 0xD9);
+    }
+    
+    console.log(`🔧 Reconstructed JPEG: ${jpegBytes.length} bytes`);
+    console.log(`📋 First 10 bytes: [${jpegBytes.slice(0, 10).map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ')}]`);
+    console.log(`📋 Last 10 bytes: [${jpegBytes.slice(-10).map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ')}]`);
+    
+    return new Uint8Array(jpegBytes);
   }
 
   /**
