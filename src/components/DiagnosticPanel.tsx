@@ -309,6 +309,39 @@ export const DiagnosticPanel: React.FC<DiagnosticPanelProps> = ({ onScan }) => {
           >
             🔄 Test Binary Data
           </button>
+
+          <button 
+            onClick={() => {
+              // Decode the current base64 image and show analysis
+              const base64Data = "SkZJRnxDfAp8DXwofDEjJXwoOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2N8Wnw8fC98IXwxfCJBUWFSfDI0cXJ8M0J8P3xCQHx9fC58QXxFfDh8WDx8PnxhfCZCfFB8S1FZfFNYfFx8SHxqCXw4IHxNX3xffCV8WXx8Y3xOTz58CTh8bHxSN3wzLCh8bEF8CnwxfHt8PiJ8KyZAPnxcITh6TzddaEVefF12OXwjfF96fFlyfGZgfCh8Jz58XXxiWXxWfD98NnwmfHZQa3xafFx8PixZUUJZcnxxfCJ8ZGUKfFl8QXxDfE85ZkAnfCE4SHwkfD5mO3xlfGl8T3x4fDl2fGI4fFl8ZnxcQ3w9fFJ8QEd8NnxQfGx8KHxefCJkI01ffXxAUUl8QnwsfHF8dnwwZHxbfE8JfD58Rn0nDXw2K3ZhfEl8UnxwTkd8MXwyfDl8K3xqZHwqfGN8XHwjUnxTfC52P2lVfDR8SyR8eV98ZXRUaXxsfHt8RXw8fFpYfEdLfHR8Inw+Znl8Q3x2MXwqRwp8bnxnVXx0XEdAfCJJfDR3fDZ8RnwzfGdiMzp8WHwgdXxJfHI+fGN8VFNhfFl8fXx2fFh4fEF8OXxWfFl8SkV8PHxMKiR8L3h8c298aCQifHR8LVB8Ij58Ry1PfHpGdXxEfGFXfGZG";
+              
+              try {
+                console.log('🔍 Analyzing current image base64...');
+                const binaryString = atob(base64Data);
+                console.log('📋 Decoded text:', binaryString.substring(0, 100));
+                console.log('📊 Decoded length:', binaryString.length);
+                
+                // Check if it's pipe-separated
+                if (binaryString.includes('|')) {
+                  const parts = binaryString.split('|');
+                  console.log('📝 Pipe-separated parts:', parts.slice(0, 10));
+                  console.log('📊 Total parts:', parts.length);
+                }
+                
+                // Show as character codes
+                const charCodes = Array.from(binaryString.substring(0, 20)).map(c => c.charCodeAt(0));
+                console.log('🔢 First 20 char codes:', charCodes);
+                
+                alert(`Image Analysis:\nText: ${binaryString.substring(0, 50)}...\nLength: ${binaryString.length}\nSee console for full details`);
+              } catch (err) {
+                alert(`Error analyzing image: ${err}`);
+              }
+            }}
+            className="btn btn-secondary"
+            style={{ fontSize: '12px', margin: '4px', background: '#dc3545', color: 'white' }}
+          >
+            🔬 Analyze Image Data
+          </button>
         </div>
       </div>
 

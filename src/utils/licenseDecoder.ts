@@ -286,11 +286,60 @@ export class MadagascarLicenseDecoder {
                 
                 licenseDataBytes = new TextEncoder().encode(licenseDataText);
                 
-                // Convert image text back to bytes
+                // Convert image text back to bytes (handle pipe-separated format)
                 console.log(`📸 Converting image text to bytes: ${imageDataText.length} chars`);
-                imageBytes = new Uint8Array(imageDataText.length);
-                for (let i = 0; i < imageDataText.length; i++) {
-                    imageBytes[i] = imageDataText.charCodeAt(i) & 0xFF;
+                console.log(`📋 Image text preview: ${imageDataText.substring(0, 50)}...`);
+                
+                // Check if image data is pipe-separated
+                if (imageDataText.includes('|')) {
+                    console.log("🔄 Processing pipe-separated image data");
+                    // Split by pipes and convert each segment
+                    const imageParts = imageDataText.split('|').filter(part => part.length > 0);
+                    console.log(`📊 Found ${imageParts.length} image data segments`);
+                    
+                    // Convert each part that looks like hex or bytes
+                    let imageDataBytes: number[] = [];
+                    
+                    for (const part of imageParts) {
+                        if (part === 'JFIF' || part === 'C') {
+                            // Add these as ASCII
+                            for (let i = 0; i < part.length; i++) {
+                                imageDataBytes.push(part.charCodeAt(i));
+                            }
+                        } else if (/^[0-9A-Fa-f]+$/.test(part) && part.length % 2 === 0) {
+                            // Looks like hex data
+                            for (let i = 0; i < part.length; i += 2) {
+                                imageDataBytes.push(parseInt(part.substr(i, 2), 16));
+                            }
+                        } else if (part.length === 1) {
+                            // Single character, convert to byte
+                            imageDataBytes.push(part.charCodeAt(0) & 0xFF);
+                        } else {
+                            // Multi-character string, convert each char
+                            for (let i = 0; i < part.length; i++) {
+                                imageDataBytes.push(part.charCodeAt(i) & 0xFF);
+                            }
+                        }
+                    }
+                    
+                    imageBytes = new Uint8Array(imageDataBytes);
+                    console.log(`✅ Converted pipe-separated data: ${imageBytes.length} bytes`);
+                    
+                    // Try to create a proper JPEG header if missing
+                    if (imageBytes.length > 0 && imageBytes[0] !== 0xFF) {
+                        console.log("🔧 Adding JPEG header");
+                        const jpegHeader = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0]); // JPEG SOI + APP0
+                        const newImageBytes = new Uint8Array(jpegHeader.length + imageBytes.length);
+                        newImageBytes.set(jpegHeader);
+                        newImageBytes.set(imageBytes, jpegHeader.length);
+                        imageBytes = newImageBytes;
+                    }
+                } else {
+                    // Original character-by-character conversion
+                    imageBytes = new Uint8Array(imageDataText.length);
+                    for (let i = 0; i < imageDataText.length; i++) {
+                        imageBytes[i] = imageDataText.charCodeAt(i) & 0xFF;
+                    }
                 }
                 
                 console.log(`Found embedded image: ${imageBytes.length} bytes`);
