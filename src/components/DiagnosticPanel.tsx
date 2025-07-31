@@ -374,11 +374,58 @@ export const DiagnosticPanel: React.FC<DiagnosticPanelProps> = ({ onScan }) => {
                   console.log('❌ Invalid JPEG end signature:', bytes[bytes.length-2].toString(16), bytes[bytes.length-1].toString(16));
                 }
                 
+                // Analyze JPEG structure
+                console.log('🔍 JPEG Structure Analysis:');
+                let pos = 0;
+                let segments = 0;
+                while (pos < bytes.length - 1 && segments < 20) {
+                  if (bytes[pos] === 0xFF) {
+                    const marker = bytes[pos + 1];
+                    console.log(`   Segment ${segments}: 0xFF${marker.toString(16).padStart(2, '0')} at position ${pos}`);
+                    
+                    if (marker === 0xD8) { // SOI
+                      pos += 2;
+                    } else if (marker === 0xD9) { // EOI
+                      pos += 2;
+                      break;
+                    } else if (marker >= 0xE0 && marker <= 0xEF) { // APPn
+                      if (pos + 3 < bytes.length) {
+                        const length = (bytes[pos + 2] << 8) | bytes[pos + 3];
+                        console.log(`      APP segment length: ${length}`);
+                        pos += 2 + length;
+                      } else {
+                        console.log('      Truncated APP segment');
+                        break;
+                      }
+                    } else if (marker === 0xDB) { // DQT
+                      if (pos + 3 < bytes.length) {
+                        const length = (bytes[pos + 2] << 8) | bytes[pos + 3];
+                        console.log(`      DQT segment length: ${length}`);
+                        pos += 2 + length;
+                      } else {
+                        console.log('      Truncated DQT segment');
+                        break;
+                      }
+                    } else {
+                      console.log(`      Unknown/unsupported marker: 0x${marker.toString(16)}`);
+                      pos += 2;
+                    }
+                    segments++;
+                  } else {
+                    console.log(`   Non-marker byte at ${pos}: 0x${bytes[pos].toString(16)}`);
+                    break;
+                  }
+                }
+                
+                if (segments >= 20) {
+                  console.log('   ... (truncated analysis, too many segments)');
+                }
+                
                 // Try to view the image
                 const testUri = `data:image/jpeg;base64,${userBase64}`;
                 window.open(testUri, '_blank');
                 
-                alert(`Base64 Analysis Complete!\nBytes: ${bytes.length}\nSee console and new tab for details`);
+                alert(`Base64 Analysis Complete!\nBytes: ${bytes.length}\nSegments: ${segments}\nSee console and new tab for details`);
               } catch (err) {
                 console.error('Base64 analysis error:', err);
                 alert(`Error analyzing base64: ${err}`);

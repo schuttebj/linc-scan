@@ -459,10 +459,67 @@ export class MadagascarLicenseDecoder {
    */
   private reconstructJpegFromPipes(imageText: string): Uint8Array {
     console.log("🔧 Reconstructing JPEG from pipe-separated data...");
+    console.log(`📋 Input text preview: ${imageText.substring(0, 100)}...`);
+    
+    // ALTERNATIVE APPROACH: Convert the entire pipe-separated string back to original bytes
+    // The pipe-separated format seems to be corrupting the original JPEG data
+    
+    console.log("🔄 Method: Converting entire string as character codes");
+    const jpegBytes: number[] = [];
+    
+    // Convert the entire string character by character, treating pipes as literal data
+    for (let i = 0; i < imageText.length; i++) {
+      const charCode = imageText.charCodeAt(i);
+      jpegBytes.push(charCode & 0xFF);
+    }
+    
+    console.log(`🔧 Raw conversion: ${jpegBytes.length} bytes`);
+    console.log(`📋 First 20 bytes: [${jpegBytes.slice(0, 20).map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ')}]`);
+    console.log(`📋 Last 10 bytes: [${jpegBytes.slice(-10).map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ')}]`);
+    
+    // Check if this produces a valid JPEG
+    if (jpegBytes.length >= 2 && jpegBytes[0] === 0x4A && jpegBytes[1] === 0x46) { // "JF"
+      console.log("🔍 Starts with 'JFIF' text - this is the pipe-separated format");
+      
+      // Try to extract just the JPEG data portion after parsing
+      // The format appears to be: "JFIF|C|\n|\r|<actual_jpeg_data>"
+      let jpegStartPos = -1;
+      
+      // Look for the pattern that indicates the start of actual JPEG data
+      // Skip the initial JFIF|C| parts and find where real JPEG might start
+      for (let i = 10; i < jpegBytes.length - 1; i++) {
+        if (jpegBytes[i] === 0xFF && jpegBytes[i + 1] === 0xD8) {
+          jpegStartPos = i;
+          break;
+        }
+      }
+      
+      if (jpegStartPos !== -1) {
+        console.log(`🎯 Found embedded JPEG at position ${jpegStartPos}`);
+        const extractedJpeg = jpegBytes.slice(jpegStartPos);
+        console.log(`📋 Extracted JPEG first bytes: [${extractedJpeg.slice(0, 10).map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ')}]`);
+        return new Uint8Array(extractedJpeg);
+      } else {
+        console.log("⚠️ No embedded JPEG signature found, trying manual reconstruction");
+        // Fall back to manual reconstruction but with improved logic
+        return this.manualJpegReconstruction(imageText);
+      }
+    } else if (jpegBytes.length >= 2 && jpegBytes[0] === 0xFF && jpegBytes[1] === 0xD8) {
+      console.log("✅ Direct conversion produced valid JPEG!");
+      return new Uint8Array(jpegBytes);
+    } else {
+      console.log("⚠️ Direct conversion failed, trying manual reconstruction");
+      return this.manualJpegReconstruction(imageText);
+    }
+  }
+
+  private manualJpegReconstruction(imageText: string): Uint8Array {
+    console.log("🔧 Manual JPEG reconstruction...");
     
     // Split by pipes and filter empty parts
     const parts = imageText.split('|').filter(part => part.length > 0);
     console.log(`📊 Found ${parts.length} pipe-separated parts`);
+    console.log(`📋 First 10 parts: ${parts.slice(0, 10).join(', ')}`);
     
     // Start building JPEG byte array
     const jpegBytes: number[] = [];
@@ -470,22 +527,21 @@ export class MadagascarLicenseDecoder {
     // Add JPEG header (SOI - Start of Image)
     jpegBytes.push(0xFF, 0xD8);
     
-    // Process each part
+    // Add JFIF APP0 marker (since we see JFIF in the data)
+    jpegBytes.push(0xFF, 0xE0); // APP0 marker
+    jpegBytes.push(0x00, 0x10); // Length: 16 bytes
+    jpegBytes.push(0x4A, 0x46, 0x49, 0x46, 0x00); // "JFIF\0"
+    jpegBytes.push(0x01, 0x01); // Version 1.1
+    jpegBytes.push(0x01); // Units: inches
+    jpegBytes.push(0x00, 0x48, 0x00, 0x48); // X/Y density: 72 DPI
+    jpegBytes.push(0x00, 0x00); // Thumbnail width/height: 0
+    
+    // Process each part, skipping the JFIF and C markers we already handled
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
       
-      if (part === 'JFIF') {
-        // Add JFIF APP0 marker
-        jpegBytes.push(0xFF, 0xE0); // APP0 marker
-        jpegBytes.push(0x00, 0x10); // Length: 16 bytes
-        jpegBytes.push(0x4A, 0x46, 0x49, 0x46, 0x00); // "JFIF\0"
-        jpegBytes.push(0x01, 0x01); // Version 1.1
-        jpegBytes.push(0x01); // Units: inches
-        jpegBytes.push(0x00, 0x48, 0x00, 0x48); // X/Y density: 72 DPI
-        jpegBytes.push(0x00, 0x00); // Thumbnail width/height: 0
-      } else if (part === 'C') {
-        // This might be a quantization table or other marker
-        // For now, skip or handle as data
+      if (part === 'JFIF' || part === 'C') {
+        // Skip these as we've already added proper JFIF header
         continue;
       } else if (part.length === 1) {
         // Single character - convert directly
@@ -511,7 +567,7 @@ export class MadagascarLicenseDecoder {
       jpegBytes.push(0xFF, 0xD9);
     }
     
-    console.log(`🔧 Reconstructed JPEG: ${jpegBytes.length} bytes`);
+    console.log(`🔧 Manual reconstruction: ${jpegBytes.length} bytes`);
     console.log(`📋 First 10 bytes: [${jpegBytes.slice(0, 10).map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ')}]`);
     console.log(`📋 Last 10 bytes: [${jpegBytes.slice(-10).map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ')}]`);
     
