@@ -252,6 +252,30 @@ export const DiagnosticPanel: React.FC<DiagnosticPanelProps> = ({ onScan }) => {
           >
             🔍 Step-by-Step Debug
           </button>
+
+          <button 
+            onClick={() => {
+              const testData = "78da016f0390fc424a20534348555454457c343536373430323239363234";
+              console.log('🧪 Testing WITHOUT XOR encryption...');
+              try {
+                const result = decoder.decodeBarcodeData(testData, true); // Skip XOR
+                console.log('No-XOR result:', result);
+                if (result.success) {
+                  alert('✅ SUCCESS! Data is NOT XOR encrypted!\n\nYour barcode is just zlib compressed.');
+                  onScan(testData); // Show the successful result
+                } else {
+                  alert(`❌ Still failed without XOR: ${result.error}`);
+                }
+              } catch (err) {
+                console.error('No-XOR test error:', err);
+                alert(`❌ No-XOR test error: ${err}`);
+              }
+            }}
+            className="btn btn-secondary"
+            style={{ fontSize: '12px', margin: '4px', background: '#28a745', color: 'white' }}
+          >
+            🔓 Test Without XOR
+          </button>
         </div>
       </div>
 

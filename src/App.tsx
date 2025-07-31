@@ -1,16 +1,17 @@
 import React, { useState, useCallback } from 'react';
 import { BarcodeScanner } from './components/BarcodeScanner';
 import { AlternativeScanner } from './components/AlternativeScanner';
+import { ImageScanner } from './components/ImageScanner';
 import { DiagnosticPanel } from './components/DiagnosticPanel';
 import { LicenseResults } from './components/LicenseResults';
 import { MadagascarLicenseDecoder, DecodedResult } from './utils/licenseDecoder';
 
 type AppState = 'scanning' | 'results' | 'manual' | 'diagnostics';
-type ScannerType = 'original' | 'alternative';
+type ScannerType = 'original' | 'alternative' | 'image';
 
 function App() {
   const [appState, setAppState] = useState<AppState>('scanning');
-  const [scannerType, setScannerType] = useState<ScannerType>('original');
+  const [scannerType, setScannerType] = useState<ScannerType>('image');
   const [isScanning, setIsScanning] = useState(false);
   const [decodedResult, setDecodedResult] = useState<DecodedResult | null>(null);
   const [manualInput, setManualInput] = useState('');
@@ -119,7 +120,9 @@ function App() {
               <p style={{ marginBottom: '16px', color: '#666' }}>
                 {scannerType === 'original' 
                   ? 'Using ZXing PDF417 Reader (may have issues)' 
-                  : 'Using Enhanced Multi-Format Scanner (recommended)'}
+                  : scannerType === 'alternative'
+                  ? 'Using Enhanced Multi-Format Scanner (recommended)'
+                  : 'Upload and scan barcode images (best for testing)'}
               </p>
               <div>
                 <button 
@@ -136,6 +139,13 @@ function App() {
                 >
                   🔍 Enhanced Scanner
                 </button>
+                <button 
+                  onClick={() => setScannerType('image')}
+                  className={`btn ${scannerType === 'image' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ margin: '4px' }}
+                >
+                  📸 Image Upload
+                </button>
               </div>
             </div>
           </div>
@@ -147,11 +157,15 @@ function App() {
               isScanning={isScanning}
               onScanningChange={setIsScanning}
             />
-          ) : (
+          ) : scannerType === 'alternative' ? (
             <AlternativeScanner
               onScan={handleScan}
               isScanning={isScanning}
               onScanningChange={setIsScanning}
+            />
+          ) : (
+            <ImageScanner
+              onScan={handleScan}
             />
           )}
           

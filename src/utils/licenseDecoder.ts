@@ -40,7 +40,7 @@ export class MadagascarLicenseDecoder {
   /**
    * Decode scanned barcode data to extract license information
    */
-  public decodeBarcodeData(scannedData: string): DecodedResult {
+  public decodeBarcodeData(scannedData: string, skipXor: boolean = false): DecodedResult {
     try {
       console.log("=== MADAGASCAR LICENSE BARCODE DECODER ===");
       console.log("Input data:", scannedData.substring(0, 100) + "...");
@@ -50,10 +50,10 @@ export class MadagascarLicenseDecoder {
       console.log(`Step 1 - Hex decode: ${scannedData.length} chars → ${binaryData.length} bytes`);
       console.log("Binary data preview:", Array.from(binaryData.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '));
       
-      // Step 2: Decrypt with static key XOR
-      const decryptedData = this.staticDecrypt(binaryData);
-      console.log(`Step 2 - Decrypt: ${binaryData.length} → ${decryptedData.length} bytes`);
-      console.log("Decrypted data preview:", Array.from(decryptedData.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+      // Step 2: Decrypt with static key XOR (or skip if unencrypted)
+      const decryptedData = skipXor ? binaryData : this.staticDecrypt(binaryData);
+      console.log(`Step 2 - ${skipXor ? 'Skip XOR' : 'Decrypt'}: ${binaryData.length} → ${decryptedData.length} bytes`);
+      console.log("Data preview:", Array.from(decryptedData.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '));
       
       // Check if data looks like zlib (should start with 0x78)
       if (decryptedData.length > 0) {
