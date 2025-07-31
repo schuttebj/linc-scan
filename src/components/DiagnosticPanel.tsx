@@ -276,6 +276,39 @@ export const DiagnosticPanel: React.FC<DiagnosticPanelProps> = ({ onScan }) => {
           >
             🔓 Test Without XOR
           </button>
+
+          <button 
+            onClick={() => {
+              // Test with the actual scanned binary data
+              const testData = "AéDV;©Ê{dbr§gìltJéqrùñtpùôñÙìOtìùÚòóÿssM|îvs\tðñâps¢ò}>évôî\tìuèüìæ§qtìâ}NÞârJsÞò§vjËìá÷J~urájðjJt=8x|âNöÇéÉÒDTssì3G7992E889ÉâA¢1!O>M4;&<IJ+$TQ+n,!/%]ÙÖò+æ{w«}î{íq~nè}bäuÞò[hnl'^P^ìt0=AU<n&_RÉòDO15ËB§G7(9Ì÷9#968DE01D2C8162DD95FA7C08>Ì÷9â)6;CE32C0E;162DD94FB0W2è<!tö+-àxÿ%cªvæ2JCÇðò¤¥ÆïDJ2G69ì3±1zyâÈ<Z¬ûSþäpªw¡ ­|§¢êžx)ÑXªc{(½Úý§ãöþc‚ÿ­¹Ð§\"¾i¤ÅœÂ\\â‰,¤eÝ)í{fD¦6nàÀ¼8øoñ8¿ VLì|xÔƒ‰íàÁUçù¬sï%µ¿påì3*(ëµèëàØLà!¨Ùt°Cà1ìc¥®òbr}ÆüjÞ|>váÔ'*v'î¯Øn3ÀÑË¯£OYnK¨k1+¥(²Œã¼œ$Eì£ÎàÁßn³[š¥`©á¶›ˆ{)BìÀ¡²ÙSò£C—)á¬÷c×o×ì—`g{æ6Â»éë2Ýï¿å !3(L©¬àÕŸ¤ÖzÚ¤y@'âîØº×·Á\t~1`Ä²Sîô‰§S¬P'G.öv‰å‹áäï}D\\›Sì+äÐìú®$ÈõjzýÃŸèøk¨yæêÒ¦°£/í°„=ýÕgâðÂôdR‚tl8èŸhìÞîè\"¦5ƒ½ÞGü³ôV\tQÞ'™Ê4v‰¨{<žDì4ëÿú‚2S¯qý÷øï¬I{åó¡@›ÀúÈ´Ó®Ö+ ×æ_QÊdëä`ÀíàfëlEy_lüìNr\"›Ofáƒêª‡FóQ$ZæJ?öpG~¬°lšá×_ð•~Ž\"ˆOüÏ‰­õìˆ‡+é½¹÷•;ÿÞ6Oæˆo~2%X7&ì%Eú ®u€²ÿ¿{½Ô\\nBCF5ˆ¬ªõÃv¹_[â´áJ iÅ«6©Ÿâ@zGZã¬áRáo§³È8ÜíO4š9¢p }¸í)h'Ÿèæƒì¿à±";
+              console.log('🔍 Testing with actual scanned binary data...');
+              try {
+                const result = decoder.decodeBarcodeData(testData, false); // Try with XOR first
+                console.log('Binary data result (with XOR):', result);
+                if (result.success) {
+                  alert('✅ SUCCESS! Binary data decoded with XOR!');
+                  onScan(testData);
+                } else {
+                  // Try without XOR
+                  console.log('🔄 Trying without XOR...');
+                  const resultNoXor = decoder.decodeBarcodeData(testData, true);
+                  if (resultNoXor.success) {
+                    alert('✅ SUCCESS! Binary data decoded WITHOUT XOR!');
+                    onScan(testData);
+                  } else {
+                    alert(`❌ Binary data failed both ways:\nWith XOR: ${result.error}\nWithout XOR: ${resultNoXor.error}`);
+                  }
+                }
+              } catch (err) {
+                console.error('Binary data test error:', err);
+                alert(`❌ Binary data test error: ${err}`);
+              }
+            }}
+            className="btn btn-secondary"
+            style={{ fontSize: '12px', margin: '4px', background: '#6f42c1', color: 'white' }}
+          >
+            🔄 Test Binary Data
+          </button>
         </div>
       </div>
 

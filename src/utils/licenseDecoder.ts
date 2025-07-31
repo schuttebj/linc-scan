@@ -44,9 +44,14 @@ export class MadagascarLicenseDecoder {
     try {
       console.log("=== MADAGASCAR LICENSE BARCODE DECODER ===");
       console.log("Input data:", scannedData.substring(0, 100) + "...");
+      console.log("Data length:", scannedData.length);
+      console.log("Data type analysis:");
+      console.log("- Is hex?", /^[0-9a-fA-F]+$/.test(scannedData));
+      console.log("- Has special chars?", /[^\x20-\x7E]/.test(scannedData));
+      console.log("- First 10 char codes:", Array.from(scannedData.substring(0, 10)).map(c => c.charCodeAt(0)));
       
-      // Step 1: Convert hex string to binary
-      const binaryData = this.hexToBinary(scannedData);
+      // Step 1: Convert data to binary (detect format)
+      const binaryData = this.detectAndConvertToBinary(scannedData);
       console.log(`Step 1 - Hex decode: ${scannedData.length} chars → ${binaryData.length} bytes`);
       console.log("Binary data preview:", Array.from(binaryData.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '));
       
@@ -89,6 +94,46 @@ export class MadagascarLicenseDecoder {
         error: error instanceof Error ? error.message : "Unknown error"
       };
     }
+  }
+
+  /**
+   * Detect data format and convert to binary
+   */
+  private detectAndConvertToBinary(data: string): Uint8Array {
+    console.log("🔍 Detecting data format...");
+    
+    // Method 1: Check if it's valid hex
+    const isHex = /^[0-9a-fA-F]+$/.test(data.trim()) && data.length % 2 === 0;
+    if (isHex) {
+      console.log("✅ Detected: Hex string");
+      return this.hexToBinary(data);
+    }
+    
+    // Method 2: Check if it's base64
+    try {
+      const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
+      if (base64Regex.test(data.trim()) && data.length % 4 === 0) {
+        console.log("🧪 Trying: Base64 decode");
+        const binaryString = atob(data.trim());
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        console.log("✅ Detected: Base64 string");
+        return bytes;
+      }
+    } catch (e) {
+      console.log("❌ Not valid base64");
+    }
+    
+    // Method 3: Treat as binary text (char codes to bytes)
+    console.log("🔄 Treating as binary text (char codes → bytes)");
+    const bytes = new Uint8Array(data.length);
+    for (let i = 0; i < data.length; i++) {
+      bytes[i] = data.charCodeAt(i) & 0xFF; // Keep only lower 8 bits
+    }
+    console.log("✅ Converted text to binary data");
+    return bytes;
   }
 
   /**
