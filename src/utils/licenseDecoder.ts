@@ -481,12 +481,81 @@ export class MadagascarLicenseDecoder {
     if (jpegBytes.length >= 2 && jpegBytes[0] === 0x4A && jpegBytes[1] === 0x46) { // "JF"
       console.log("🔍 Starts with 'JFIF' text - this is the pipe-separated format");
       
-      // Try to extract just the JPEG data portion after parsing
-      // The format appears to be: "JFIF|C|\n|\r|<actual_jpeg_data>"
-      let jpegStartPos = -1;
+      // NEW APPROACH: Extract raw JPEG data between specific markers
+      console.log("🔄 Method 3: Raw JPEG extraction (bypass pipe parsing)");
       
-      // Look for the pattern that indicates the start of actual JPEG data
-      // Skip the initial JFIF|C| parts and find where real JPEG might start
+      // The format seems to be: "JFIF|C|\n|\r|<compressed_jpeg_data>"
+      // Look for the pattern after the initial markers
+      const textStr = imageText;
+      
+      // Find where the actual JPEG data starts (after JFIF|C|CR|LF markers)
+      let dataStartPattern = "JFIF|C|\n|\r|";
+      let dataStartIndex = textStr.indexOf(dataStartPattern);
+      
+      if (dataStartIndex === -1) {
+        // Try alternative patterns
+        dataStartPattern = "JFIF|C|";
+        dataStartIndex = textStr.indexOf(dataStartPattern);
+        if (dataStartIndex !== -1) {
+          dataStartIndex += dataStartPattern.length;
+          // Skip any pipe characters that follow
+          while (dataStartIndex < textStr.length && textStr[dataStartIndex] === '|') {
+            dataStartIndex++;
+          }
+        }
+      } else {
+        dataStartIndex += dataStartPattern.length;
+      }
+      
+      if (dataStartIndex !== -1 && dataStartIndex < textStr.length) {
+        console.log(`🎯 Found JPEG data start at position ${dataStartIndex}`);
+        
+        // Extract everything from this point as potential JPEG data
+        const rawJpegText = textStr.substring(dataStartIndex);
+        console.log(`📋 Raw JPEG text preview: ${rawJpegText.substring(0, 50)}...`);
+        console.log(`📊 Raw JPEG text length: ${rawJpegText.length} chars`);
+        
+        // Convert to bytes and add proper JPEG headers
+        const rawJpegBytes: number[] = [];
+        
+        // Add JPEG SOI
+        rawJpegBytes.push(0xFF, 0xD8);
+        
+        // Add JFIF APP0 marker
+        rawJpegBytes.push(0xFF, 0xE0, 0x00, 0x10); // APP0 + length
+        rawJpegBytes.push(0x4A, 0x46, 0x49, 0x46, 0x00); // "JFIF\0"
+        rawJpegBytes.push(0x01, 0x01, 0x01); // Version + units
+        rawJpegBytes.push(0x00, 0x48, 0x00, 0x48); // X/Y density
+        rawJpegBytes.push(0x00, 0x00); // Thumbnail size
+        
+        // Add the raw data (treating each character as a byte)
+        for (let i = 0; i < rawJpegText.length; i++) {
+          rawJpegBytes.push(rawJpegText.charCodeAt(i) & 0xFF);
+        }
+        
+        // Ensure proper ending
+        if (rawJpegBytes.length >= 2 && 
+            !(rawJpegBytes[rawJpegBytes.length-2] === 0xFF && rawJpegBytes[rawJpegBytes.length-1] === 0xD9)) {
+          rawJpegBytes.push(0xFF, 0xD9);
+        }
+        
+        console.log(`🔧 Raw extraction result: ${rawJpegBytes.length} bytes`);
+        console.log(`📋 Raw extraction first bytes: [${rawJpegBytes.slice(0, 10).map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ')}]`);
+        console.log(`📋 Raw extraction last bytes: [${rawJpegBytes.slice(-6).map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ')}]`);
+        
+        const rawResult = new Uint8Array(rawJpegBytes);
+        
+        // Test if this produces a larger, more realistic JPEG
+        if (rawResult.length > 500) {
+          console.log("✅ Raw extraction produced larger JPEG, using this method");
+          return rawResult;
+        } else {
+          console.log("⚠️ Raw extraction still too small, trying embedded search");
+        }
+      }
+      
+      // Original embedded search fallback
+      let jpegStartPos = -1;
       for (let i = 10; i < jpegBytes.length - 1; i++) {
         if (jpegBytes[i] === 0xFF && jpegBytes[i + 1] === 0xD8) {
           jpegStartPos = i;
@@ -501,7 +570,6 @@ export class MadagascarLicenseDecoder {
         return new Uint8Array(extractedJpeg);
       } else {
         console.log("⚠️ No embedded JPEG signature found, trying manual reconstruction");
-        // Fall back to manual reconstruction but with improved logic
         return this.manualJpegReconstruction(imageText);
       }
     } else if (jpegBytes.length >= 2 && jpegBytes[0] === 0xFF && jpegBytes[1] === 0xD8) {
